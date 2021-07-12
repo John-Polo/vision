@@ -293,3 +293,83 @@ def init_distributed_mode(args):
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)
+
+[docs]@torch.no_grad()
+def draw_segmentation_masks(
+    image: torch.Tensor,
+    masks: torch.Tensor,
+    alpha: float = 0.8,
+    colors: Optional[List[Union[str, Tuple[int, int, int]]]] = None,
+) -> torch.Tensor:
+
+    """
+    Draws segmentation masks on given RGB image.
+    The values of the input image should be uint8 between 0 and 255.
+
+    Args:
+        image (Tensor): Tensor of shape (3, H, W) and dtype uint8.
+        masks (Tensor): Tensor of shape (num_masks, H, W) or (H, W) and dtype bool.
+        alpha (float): Float number between 0 and 1 denoting the transparency of the masks.
+            0 means full transparency, 1 means no transparency.
+        colors (list or None): List containing the colors of the masks. The colors can
+            be represented as PIL strings e.g. "red" or "#FF00FF", or as RGB tuples e.g. ``(240, 10, 157)``.
+            When ``masks`` has a single entry of shape (H, W), you can pass a single color instead of a list
+            with one element. By default, random colors are generated for each mask.
+
+    Returns:
+        img (Tensor[C, H, W]): Image Tensor, with segmentation masks drawn on top.
+    """
+
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"The image must be a tensor, got {type(image)}")
+    elif image.dtype != torch.uint8:
+        raise ValueError(f"The image dtype must be uint8, got {image.dtype}")
+    elif image.dim() != 3:
+        raise ValueError("Pass individual images, not batches")
+    elif image.size()[0] != 3:
+        raise ValueError("Pass an RGB image. Other Image formats are not supported")
+    if masks.ndim == 2:
+        masks = masks[None, :, :]
+    if masks.ndim != 3:
+        raise ValueError("masks must be of shape (H, W) or (batch_size, H, W)")
+    if masks.dtype != torch.bool:
+        raise ValueError(f"The masks must be of dtype bool. Got {masks.dtype}")
+    if masks.shape[-2:] != image.shape[-2:]:
+        raise ValueError("The image and the masks must have the same height and width")
+
+    num_masks = masks.size()[0]
+    if colors is not None and num_masks > len(colors):
+        raise ValueError(f"There are more masks ({num_masks}) than colors ({len(colors)})")
+
+    if colors is None:
+        colors = _generate_color_palette(num_masks)
+
+    if not isinstance(colors, list):
+        colors = [colors]
+    if not isinstance(colors[0], (tuple, str)):
+        raise ValueError("colors must be a tuple or a string, or a list thereof")
+    if isinstance(colors[0], tuple) and len(colors[0]) != 3:
+        raise ValueError("It seems that you passed a tuple of colors instead of a list of colors")
+
+    out_dtype = torch.uint8
+
+    colors_ = []
+    for color in colors:
+        if isinstance(color, str):
+            color = ImageColor.getrgb(color)
+        color = torch.tensor(color, dtype=out_dtype)
+        colors_.append(color)
+
+    img_to_draw = image.detach().clone()
+    # TODO: There might be a way to vectorize this
+    for mask, color in zip(masks, colors_):
+        img_to_draw[:, mask] = color[:, None]
+
+    out = image * (1 - alpha) + img_to_draw * alpha
+    return out.to(out_dtype)
+
+
+
+def _generate_color_palette(num_masks):
+    palette = torch.tensor([2 ** 25 - 1, 2 ** 15 - 1, 2 ** 21 - 1])
+    return [tuple((i * palette) % 255) for i in range(num_masks)]
