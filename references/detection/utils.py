@@ -294,7 +294,7 @@ def init_distributed_mode(args):
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)
 
-[docs]@torch.no_grad()
+#[docs]@torch.no_grad()
 def draw_segmentation_masks(
     image: torch.Tensor,
     masks: torch.Tensor,
