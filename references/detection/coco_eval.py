@@ -7,9 +7,9 @@ import time
 import torch
 import torch._six
 
-from pycocotools.cocoeval import COCOeval
-from pycocotools.coco import COCO
-import pycocotools.mask as mask_util
+from cocoapi.PythonAPI.pycocotools.cocoeval import COCOeval
+from cocoapi.PythonAPI.pycocotools.coco import COCO
+import cocoapi.PythonAPI.pycocotools.mask as mask_util
 
 from collections import defaultdict
 
